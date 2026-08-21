@@ -6,10 +6,6 @@ import phonenumbers
 import os
 import re
 
-# FOR TESTING ONLY -- REMOVE FOR PROD
-
-# 2026-07-24T19:25:27.98
-
 # ================================================================
 # PHONE NUMBER STANDARDIZING FUNCTION
 # ----------------------------------------------------------------
@@ -71,11 +67,23 @@ def main():
 
     with open('start_date.txt', 'r') as f:
         start_date = f.readline().strip()
+        # example date: 2026-07-24T19:25:27.980
         iso_timestamp_pattern = r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z?'
         print(repr(start_date))
         if not re.fullmatch(iso_timestamp_pattern, start_date):
             raise ValueError('Start Date in helper file is not valid')
-        id_of_last_updated = f.readline().strip()
+        id_of_last_checked = f.readline().strip()
+
+    # Load DD credentials
+    DD_API_URL = 'https://public-api.donordock.com/api/v1'
+    DD_API_KEY = os.getenv('DD_SANDBOX_API_KEY')
+    DD_API_SECRET = os.getenv('DD_SANDBOX_API_SECRET')
+    DD_TENANT_ID = os.getenv('DD_SANDBOX_TENANT_ID')
+
+    # Validate DD credentials
+    print('DD_API_KEY loaded:', DD_API_KEY is not None)
+    print('DD_API_SECRET loaded:', DD_API_SECRET is not None)
+    print('DD_TENANT_ID:', repr(DD_TENANT_ID))
 
     # do-while loop pattern.
     # Loop ends when no contact records are left. Loop also breaks when API rate limits are reached.
@@ -85,43 +93,26 @@ def main():
         # API REQUEST FOR DATA TO STANDARDIZE
         # ----------------------------------------------------------------
         
-        API_URL = 'https://public-api.donordock.com/api/v1'
-        API_KEY = os.getenv('DD_SANDBOX_API_KEY')
-        API_SECRET = os.getenv('DD_SANDBOX_API_SECRET')
-        TENANT_ID = os.getenv('DD_SANDBOX_TENANT_ID')
-
-        print('API_KEY loaded:', API_KEY is not None)
-        print('API_SECRET loaded:', API_SECRET is not None)
-        print('TENANT_ID:', repr(TENANT_ID))
-        
-        headers = {
-            'X-Tenant-Id': TENANT_ID
-        }
-
-        auth = (
-            API_KEY,
-            API_SECRET
-        )
-
-        params = {
-            'fromDate': start_date,
-            'take': BATCH_SIZE,
-            'sortDir': 'ASC'
-        }
-
         response = requests.get(
-            url=f'{API_URL}/Contacts',
-            params=params,
-            headers=headers,
-            auth=auth
+            url=f'{DD_API_URL}/Contacts',
+            params={
+                'fromDate': start_date,
+                'take': BATCH_SIZE,
+                'sortDir': 'ASC'
+            },
+            headers={
+                'X-Tenant-Id': DD_TENANT_ID
+            },
+            auth=(
+                DD_API_KEY,
+                DD_API_SECRET
+            )
         )
 
         print(response)
 
-        if response.status_code == 200:
-            print(response.json())
-        else:
-            raise (f'Error: {response.status_code}')
+        # raise error if there was one
+        response.raise_for_status()
         
         contacts_api_result = response.json() # gives dict containing 'data' list containing a dict for each donor
         contacts_dicts = contacts_api_result['Data']
@@ -141,16 +132,23 @@ def main():
             client_secret=client_secret
         )
 
+
+        # ================================================================
+        # PREPARING OUTPUT FILES
+        # ----------------------------------------------------------------
+
         with open('before.csv', 'a', encoding='utf-8') as before, \
                 open('after.csv', 'a', encoding='utf-8') as after:
+            
             # ================================================================
             # CLEANUP AND UPDATE LOOP
             # ----------------------------------------------------------------
 
             # for each record
-            date_of_last_updated = start_date
+            date_of_last_checked = start_date
             for contact_dict in contacts_dicts:
-                contact_dict_before = contact_dict
+
+                # write contact_dict to before in CSV format
                 
                 # strip leading and trailing whitespace from all fields
                 for key in contact_dict:
@@ -181,42 +179,9 @@ def main():
             
                 print(f'Json dumps result: {json.dumps(contact_dict)}')
 
-                date_of_last_updated = contact_dict['CreatedOn']
+                date_of_last_checked = contact_dict['CreatedOn']
 
-                # make call to DonorDock API to PUT the updates
-                # *OR*, put updates into a CSV file for review.
-
-                # response = requests.put(
-                #     url = f'{API_URL}/Contacts/{contact_dict['Id']}',
-                #     json = contact_dict,
-                #     headers = headers,
-                #     auth = auth
-                # )
-
-                # print(f'\nResponse: {response}')
-                # print(f'\nStatus code: {response.status_code}')
-                # print(f'\nResponse content: {response.content}')
-                # print(f'\nRequest url: {response.request.url}')
-                # print(f'\nRequest headers: {response.request.headers}')
-                # print(f'\nRequest body: {response.request.body}')
-            
-
-            
-                date_of_last_updated = contact_dict['CreatedOn']
-                if response.status_code == 200:
-                    id_of_last_updated = contact_dict['Id']
-                else:
-                    break
-                
-                print(f'start date: {start_date}, end date: {date_of_last_updated}')
-            
-                response = requests.get(
-                    url = f'{API_URL}/Contacts/{contact_dict['Id']}',
-                    headers = headers,
-                    auth = auth
-                )
-            
-                print(f'\nUpdated Contact: {response.content}')
+                # write contact_dict to after in csv format
 
         if len(contacts_dicts) < BATCH_SIZE:
             break
@@ -228,8 +193,8 @@ def main():
     # ----------------------------------------------------------------
     
     # with open('start_date.txt', 'w') as f:
-    #    f.write(date_of_last_updated + '\n')
-    #    f.write(id_of_last_updated)
+    #    f.write(date_of_last_checked + '\n')
+    #    f.write(id_of_last_checked)
 
 if __name__ == '__main__':
     main()
