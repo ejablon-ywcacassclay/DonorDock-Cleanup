@@ -33,7 +33,7 @@ def fix_phone_number(phone_number_string):
         return phonenumbers.format_number(phone_number, phonenumbers.PhoneNumberFormat.INTERNATIONAL)
 
 # ================================================================
-# PHONE NUMBER STANDARDIZING FUNCTION
+# ADDRESS STANDARDIZING FUNCTION
 # ----------------------------------------------------------------
 
 # corrects a US address using the USPS API.
@@ -42,25 +42,28 @@ def fix_phone_number(phone_number_string):
 '''
 def fix_us_address(oauth_token, address_line_1, address_line_2, address_line_3, city, state_or_province, postal_code, country):
     url = 'https://apis-tem.usps.com/addresses/v3'
+    params = {
+
+    }
     headers = {
-        "Content-type": "application/json",
-        "Authorization": "Bearer aaaaa3LRm6frS4FwZvB3ZMZwdKVNMCEBpBvlFwbT"
+        'Content-type': 'application/json',
+        'Authorization': 'Bearer aaaaa3LRm6frS4FwZvB3ZMZwdKVNMCEBpBvlFwbT'
     }
 
     requests.get(
         url=url,
+        params=params,
         headers=headers
+    )
 '''
 
 # ================================================================
 # CLEANUP SCRIPT
 # ----------------------------------------------------------------
 
-#def clean_up(batch_size, start_date, id_of_last_modified):
-    
+BATCH_SIZE = 10
 
 def main():
-    print(('#' * 60 + '\n') * 3)
 
     # ================================================================
     # LOADING START DATE
@@ -74,152 +77,157 @@ def main():
             raise ValueError('Start Date in helper file is not valid')
         id_of_last_updated = f.readline().strip()
 
-    # ================================================================
-    # API REQUEST FOR DATA TO STANDARDIZE
-    # ----------------------------------------------------------------
-    
-    API_URL = 'https://public-api.donordock.com/api/v1'
-    API_KEY = os.getenv('DD_SANDBOX_API_KEY')
-    API_SECRET = os.getenv('DD_SANDBOX_API_SECRET')
-    TENANT_ID = os.getenv('DD_SANDBOX_TENANT_ID')
+    # do-while loop pattern.
+    # Loop ends when no contact records are left. Loop also breaks when API rate limits are reached.
+    while True:
 
-    print('API_KEY loaded:', API_KEY is not None)
-    print('API_SECRET loaded:', API_SECRET is not None)
-    print('TENANT_ID:', repr(TENANT_ID))
-    
-    headers = {
-        'X-Tenant-Id': TENANT_ID
-    }
-
-    auth = (
-        API_KEY,
-        API_SECRET
-    )
-
-    params = {
-        'fromDate': start_date,
-        'take': 10,
-        'sortDir': 'ASC'
-    }
-
-    response = requests.get(
-        f'{API_URL}/Contacts',
-        params=params,
-        headers=headers,
-        auth=auth
-    )
-
-    print(response)
-
-    if response.status_code == 200:
-        print(response.json())
-    else:
-        print(f'Error: {response.status_code}')
-    
-    contacts_api_result = response.json() # gives dict containing "data" list containing a dict for each donor
-    contacts_dicts = contacts_api_result['Data']
-
-    # ================================================================
-    # GETTING OAUTH CREDENTIALS FOR USPS API
-    # ----------------------------------------------------------------
-
-    client_id = 'your_client_id'
-    client_secret = 'your_client_secret'
-
-    client = BackendApplicationClient(client_id=client_id)
-    oauth = OAuth2Session(client=client)
-    token = oauth.fetch_token(
-        token_url='https://apis-tem.usps.com/oauth2/v3/token',
-        client_id=client_id,
-        client_secret=client_secret
-    )
-
-    # ================================================================
-    # CLEANUP AND UPDATE LOOP
-    # ----------------------------------------------------------------
-
-    # for each record
-    date_of_last_updated = start_date
-    for contact_dict in contacts_dicts:
+        # ================================================================
+        # API REQUEST FOR DATA TO STANDARDIZE
+        # ----------------------------------------------------------------
         
-        # we strip leading and trailing whitespace from all fields
-        for key in contact_dict:
-            contact_dict[key] = None if not contact_dict[key] or not contact_dict[key].strip() else contact_dict[key].strip()
+        API_URL = 'https://public-api.donordock.com/api/v1'
+        API_KEY = os.getenv('DD_SANDBOX_API_KEY')
+        API_SECRET = os.getenv('DD_SANDBOX_API_SECRET')
+        TENANT_ID = os.getenv('DD_SANDBOX_TENANT_ID')
 
-        # make call to USPS API to standardize addresses
-        # if status = 200:
-        #     update address in contact_dict based on result
-        # else if error 429:
-        #     save contact_dict['CreatedOn'] as the start date for the next update run
-        #     break loop and end execution
-        # if any other error:
-        #     contact_dict['BadAddress'] = True
-
-        # update phone number using phonenumbers package (update Main? Mobile? Both?)
-        print(f'Main Phone Before Correction: {repr(contact_dict['MainPhone'])}')
-        if contact_dict['MainPhone'] and contact_dict['MainPhone'].strip():
-            try:
-                contact_dict['MainPhone'] = fix_phone_number(contact_dict['MainPhone'])
-            except phonenumbers.phonenumberutil.NumberParseException as npe:
-                contact_dict['BadMobileNumber'] = True
-        else:
-            contact_dict['MainPhone'] = None
-        print(f'Main Phone After Correction: {repr(contact_dict['MainPhone'])}')
-    
-        print(f'Mobile Phone Before Correction: {repr(contact_dict['MobilePhone'])}')
-        if contact_dict['MobilePhone'] and contact_dict['MobilePhone'].strip():
-            try:
-                contact_dict['MobilePhone'] = fix_phone_number(contact_dict['MobilePhone'])
-            except phonenumbers.phonenumberutil.NumberParseException as npe:
-                contact_dict['BadMobileNumber'] = True
-        else:
-            contact_dict['MobilePhone'] = None
-        print(f'Mobile Phone After Correction: {repr(contact_dict['MobilePhone'])}')
+        print('API_KEY loaded:', API_KEY is not None)
+        print('API_SECRET loaded:', API_SECRET is not None)
+        print('TENANT_ID:', repr(TENANT_ID))
         
-        print(f'Json dumps result: {json.dumps(contact_dict)}')
+        headers = {
+            'X-Tenant-Id': TENANT_ID
+        }
 
-        date_of_last_updated = contact_dict['CreatedOn']
-
-        # make call to DonorDock API to PUT the updates
-        # *OR*, put updates into a CSV file for review.
-        response = requests.put(
-            url = f'{API_URL}/Contacts/{contact_dict['Id']}',
-            json = contact_dict,
-            headers = headers,
-            auth = auth
+        auth = (
+            API_KEY,
+            API_SECRET
         )
 
+        params = {
+            'fromDate': start_date,
+            'take': BATCH_SIZE,
+            'sortDir': 'ASC'
+        }
 
-    #    print(f'\nResponse: {response}')
-    #    print(f'\nStatus code: {response.status_code}')
-    #    print(f'\nResponse content: {response.content}')
-    #    print(f'\nRequest url: {response.request.url}')
-    #    print(f'\nRequest headers: {response.request.headers}')
-        print(f'\nRequest body: {response.request.body}')
-    
-    
-        date_of_last_updated = contact_dict['CreatedOn']
-        if response.status_code == 200:
-            id_of_last_updated = contact_dict['Id']
-        else:
-            break
-        
-        print(f'start date: {start_date}, end date: {date_of_last_updated}')
-    
         response = requests.get(
-            url = f'{API_URL}/Contacts/{contact_dict['Id']}',
-            headers = headers,
-            auth = auth
+            url=f'{API_URL}/Contacts',
+            params=params,
+            headers=headers,
+            auth=auth
         )
-    
-        print(f'\nUpdated Contact: {response.content}')
+
+        print(response)
+
+        if response.status_code == 200:
+            print(response.json())
+        else:
+            raise (f'Error: {response.status_code}')
+        
+        contacts_api_result = response.json() # gives dict containing 'data' list containing a dict for each donor
+        contacts_dicts = contacts_api_result['Data']
+
+        # ================================================================
+        # GETTING OAUTH CREDENTIALS FOR USPS API
+        # ----------------------------------------------------------------
+
+        client_id = 'your_client_id'
+        client_secret = 'your_client_secret'
+
+        client = BackendApplicationClient(client_id=client_id)
+        oauth = OAuth2Session(client=client)
+        token = oauth.fetch_token(
+            token_url='https://apis-tem.usps.com/oauth2/v3/token',
+            client_id=client_id,
+            client_secret=client_secret
+        )
+
+        with open('before.csv', 'a', encoding='utf-8') as before, \
+                open('after.csv', 'a', encoding='utf-8') as after:
+            # ================================================================
+            # CLEANUP AND UPDATE LOOP
+            # ----------------------------------------------------------------
+
+            # for each record
+            date_of_last_updated = start_date
+            for contact_dict in contacts_dicts:
+                contact_dict_before = contact_dict
+                
+                # strip leading and trailing whitespace from all fields
+                for key in contact_dict:
+                    contact_dict[key] = None if not contact_dict[key] or not contact_dict[key].strip() else contact_dict[key].strip()
+
+                
+
+                # make call to USPS API to standardize addresses
+                # if status = 200:
+                #     update address in contact_dict based on result
+                # else if error 429:
+                #     save contact_dict['CreatedOn'] as the start date for the next update run
+                #     break loop and end execution
+                # if any other error:
+                #     contact_dict['BadAddress'] = True
+
+                # update phone number using phonenumbers package (update Main? Mobile? Both?)
+                for phone_number_type in ['MainPhone', 'MobilePhone']:
+                    print(f'{phone_number_type} Before Correction: {repr(contact_dict[phone_number_type])}')
+                    if contact_dict[phone_number_type] and contact_dict[phone_number_type].strip(): # if not empty and not spaces
+                        try:
+                            contact_dict[phone_number_type] = fix_phone_number(contact_dict[phone_number_type])
+                        except phonenumbers.phonenumberutil.NumberParseException as npe:
+                            contact_dict['BadMobileNumber'] = True
+                    else:
+                        contact_dict[phone_number_type] = None
+                    print(f'{phone_number_type} After Correction: {repr(contact_dict[phone_number_type])}')
+            
+                print(f'Json dumps result: {json.dumps(contact_dict)}')
+
+                date_of_last_updated = contact_dict['CreatedOn']
+
+                # make call to DonorDock API to PUT the updates
+                # *OR*, put updates into a CSV file for review.
+
+                # response = requests.put(
+                #     url = f'{API_URL}/Contacts/{contact_dict['Id']}',
+                #     json = contact_dict,
+                #     headers = headers,
+                #     auth = auth
+                # )
+
+                # print(f'\nResponse: {response}')
+                # print(f'\nStatus code: {response.status_code}')
+                # print(f'\nResponse content: {response.content}')
+                # print(f'\nRequest url: {response.request.url}')
+                # print(f'\nRequest headers: {response.request.headers}')
+                # print(f'\nRequest body: {response.request.body}')
+            
+
+            
+                date_of_last_updated = contact_dict['CreatedOn']
+                if response.status_code == 200:
+                    id_of_last_updated = contact_dict['Id']
+                else:
+                    break
+                
+                print(f'start date: {start_date}, end date: {date_of_last_updated}')
+            
+                response = requests.get(
+                    url = f'{API_URL}/Contacts/{contact_dict['Id']}',
+                    headers = headers,
+                    auth = auth
+                )
+            
+                print(f'\nUpdated Contact: {response.content}')
+
+        if len(contacts_dicts) < BATCH_SIZE:
+            break
+
 
 
     # ================================================================
     # WRITING END DATE
     # ----------------------------------------------------------------
     
-    #with open('start_date.txt', 'w') as f:
+    # with open('start_date.txt', 'w') as f:
     #    f.write(date_of_last_updated + '\n')
     #    f.write(id_of_last_updated)
 
