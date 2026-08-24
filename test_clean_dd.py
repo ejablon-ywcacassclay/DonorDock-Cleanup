@@ -43,8 +43,22 @@ class TestPhoneNumberFunction(unittest.TestCase):
                 with self.assertRaises(NumberParseException):
                     clean_dd.fix_phone_number(phone)
     
-class TestMainFunction(unittest.TestCase):
-    def 
+class TestFixContactFunction(unittest.TestCase):
+    test_contact = dict(zip(clean_dd.csv_schema, ['efwa2342uh34u2ih87fg', 'DD-1', None, 'Mr.', 'John', None, 'Doe', 'John Doe', 'John Doe', None, None, None, 'John Doe', 'Dear John Doe', None, 'john.doe@email.com', None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, False, False, 'INDIVIDUAL', None, 'PROSPECT', 'ebuhf57d7feu9', None, None, None, None, None, None, None, None, '', None, None, None, None, None, None, None, 'FALSE', None, None, None, None, [], '2026-07-24T19:25:26.527', '2026-08-19T21:31:47.197']))
+
+    def test_whitespace_stripping(self):
+        whitespace_test_contact = self.test_contact.copy()
+        whitespace_test_contact['FirstName'] = ' John'
+        whitespace_test_contact['LastName'] = 'Doe  '
+        whitespace_test_contact['Title'] = ' Mr. '
+        clean_dd.fix_contact(whitespace_test_contact)
+        self.assertEqual(whitespace_test_contact, self.test_contact)
+
+    def test_phone_number_invalid(self):
+        invalid_phone_test_contact = self.test_contact.copy()
+        invalid_phone_test_contact['MainPhone'] = '123456789'
+        clean_dd.fix_contact(invalid_phone_test_contact)
+        self.assertEqual(invalid_phone_test_contact['BadMobileNumber'], '')
 
 if __name__ == '__main__':
     unittest.main()
