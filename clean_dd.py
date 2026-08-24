@@ -57,7 +57,7 @@ def fix_us_address(oauth_token, address_line_1, address_line_2, address_line_3, 
 # CLEANUP SCRIPT
 # ----------------------------------------------------------------
 
-BATCH_SIZE = 1000
+BATCH_SIZE = 100
 
 def main():
 
@@ -80,7 +80,7 @@ def main():
     DD_API_SECRET = os.getenv('DD_SANDBOX_API_SECRET')
     DD_TENANT_ID = os.getenv('DD_SANDBOX_TENANT_ID')
 
-    # Validate DD credentials
+    # Log whether DD credentials loaded
     print('DD_API_KEY loaded:', DD_API_KEY is not None)
     print('DD_API_SECRET loaded:', DD_API_SECRET is not None)
     print('DD_TENANT_ID:', repr(DD_TENANT_ID))
@@ -108,8 +108,6 @@ def main():
                 DD_API_SECRET
             )
         )
-
-        # print(response)
 
         # raise error if there was one
         response.raise_for_status()
@@ -175,10 +173,9 @@ def main():
                 
                 # strip leading and trailing whitespace from all fields
                 for key in contact_dict:
-                    s = contact_dict[key]
-                    if type(s) == str and (s.startswith(' ') or s.endswith(' ')):
-                        print(repr(s))
-                #     contact_dict[key] = None if not str(contact_dict[key]) or not str(contact_dict[key]).strip() else str(contact_dict[key]).strip()
+                    val = contact_dict[key]
+                    if type(val) == str and (val.startswith(' ') or val.endswith(' ')):
+                        contact_dict[key] = val.strip()
 
                 # make call to USPS API to standardize addresses
                 # if status = 200:
@@ -210,17 +207,12 @@ def main():
                     before_writer.writerow(before_contact_dict)
                     after_writer.writerow(contact_dict)
 
-                # before_writer.writerow(before_contact_dict)
-                # after_writer.writerow(contact_dict)
-
         if len(contacts_dicts) < BATCH_SIZE:
             break
 
         start_date = date_of_last_checked
 
         # break
-
-
 
     # ================================================================
     # WRITING END DATE
