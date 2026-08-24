@@ -58,7 +58,7 @@ class TestFixContactFunction(unittest.TestCase):
         invalid_phone_test_contact = self.test_contact.copy()
         invalid_phone_test_contact['MainPhone'] = '123456789'
         clean_dd.fix_contact(invalid_phone_test_contact)
-        self.assertEqual(invalid_phone_test_contact['BadMobileNumber'], '')
+        self.assertEqual(invalid_phone_test_contact['BadMobileNumber'], True)
 
 if __name__ == '__main__':
     unittest.main()
