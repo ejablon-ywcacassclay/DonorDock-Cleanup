@@ -1,10 +1,10 @@
-import json
 import requests
 from oauthlib.oauth2 import BackendApplicationClient
 from requests_oauthlib import OAuth2Session
 import phonenumbers
 import os
 import re
+import csv
 
 # ================================================================
 # PHONE NUMBER STANDARDIZING FUNCTION
@@ -57,7 +57,7 @@ def fix_us_address(oauth_token, address_line_1, address_line_2, address_line_3, 
 # CLEANUP SCRIPT
 # ----------------------------------------------------------------
 
-BATCH_SIZE = 10
+BATCH_SIZE = 1000
 
 def main():
 
@@ -109,7 +109,7 @@ def main():
             )
         )
 
-        print(response)
+        # print(response)
 
         # raise error if there was one
         response.raise_for_status()
@@ -121,25 +121,48 @@ def main():
         # GETTING OAUTH CREDENTIALS FOR USPS API
         # ----------------------------------------------------------------
 
-        client_id = 'your_client_id'
-        client_secret = 'your_client_secret'
+        # client_id = 'your_client_id'
+        # client_secret = 'your_client_secret'
 
-        client = BackendApplicationClient(client_id=client_id)
-        oauth = OAuth2Session(client=client)
-        token = oauth.fetch_token(
-            token_url='https://apis-tem.usps.com/oauth2/v3/token',
-            client_id=client_id,
-            client_secret=client_secret
-        )
+        # client = BackendApplicationClient(client_id=client_id)
+        # oauth = OAuth2Session(client=client)
+        # token = oauth.fetch_token(
+        #     token_url='https://apis-tem.usps.com/oauth2/v3/token',
+        #     client_id=client_id,
+        #     client_secret=client_secret
+        # )
 
 
         # ================================================================
         # PREPARING OUTPUT FILES
         # ----------------------------------------------------------------
 
-        with open('before.csv', 'a', encoding='utf-8') as before, \
-                open('after.csv', 'a', encoding='utf-8') as after:
-            
+        csv_schema = ['Id', 'AccountNumber', 'MemberId', 'Title',
+                'FirstName', 'MiddleName', 'LastName', 'FullName', 'DisplayName', 'Nickname', 'FormerName',
+                'OrganizationName', 'Addressee', 'Salutation', 'Suffix', 'Email', 'DOB',
+                'Address1', 'Address2', 'Address3', 'City', 'StateOrProvince', 'PostalCode', 'Country',
+                'MainPhone', 'MobilePhone', 'Fax', 'Website',
+                'FacebookUsername', 'InstagramUsername', 'LinkedInUsername', 'TwitterUsername',
+                'DoNotSolicit', 'Deceased', 'Type', 'Description', 'Stage', 'IntegrationId',
+                'Source', 'ExceptionNotes', 'Employer', 'JobTitle', 'Household', 'HouseholdRole',
+                'SpouseFirst', 'SpouseLast', 'Badges', 'MarketingLists', 'GiftsInDateRange', 'DonationGiftsInDateRange',
+                'EventTicketGiftsInDateRange', 'MembershipGiftsInDateRange', 'VolunteerHoursInDateRange',
+                'Owner', 'Affiliation', 'BadAddress', 'Unsubscribed', 'BadMobileNumber', 'SMSUnsubscribed',
+                'CustomFields', 'CreatedOn', 'ModifiedOn']
+
+        if not os.path.isfile('before.csv') or os.path.getsize('before.csv') == 0:
+            with open('before.csv', 'w', encoding='utf-8', newline='') as before:
+                csv.writer(before).writerow(csv_schema)
+        if not os.path.isfile('after.csv') or os.path.getsize('after.csv') == 0:
+            with open('after.csv', 'w', encoding='utf-8', newline='') as after:
+                csv.writer(after).writerow(csv_schema)
+
+        with open('before.csv', 'a', encoding='utf-8', newline='') as before, \
+                open('after.csv', 'a', encoding='utf-8', newline='') as after:
+
+            before_writer = csv.DictWriter(f=before, fieldnames=csv_schema)
+            after_writer = csv.DictWriter(f=after, fieldnames=csv_schema)
+
             # ================================================================
             # CLEANUP AND UPDATE LOOP
             # ----------------------------------------------------------------
@@ -148,13 +171,14 @@ def main():
             date_of_last_checked = start_date
             for contact_dict in contacts_dicts:
 
-                # write contact_dict to before in CSV format
+                before_contact_dict = contact_dict.copy()
                 
                 # strip leading and trailing whitespace from all fields
                 for key in contact_dict:
-                    contact_dict[key] = None if not contact_dict[key] or not contact_dict[key].strip() else contact_dict[key].strip()
-
-                
+                    s = contact_dict[key]
+                    if type(s) == str and (s.startswith(' ') or s.endswith(' ')):
+                        print(repr(s))
+                #     contact_dict[key] = None if not str(contact_dict[key]) or not str(contact_dict[key]).strip() else str(contact_dict[key]).strip()
 
                 # make call to USPS API to standardize addresses
                 # if status = 200:
@@ -167,7 +191,7 @@ def main():
 
                 # update phone number using phonenumbers package (update Main? Mobile? Both?)
                 for phone_number_type in ['MainPhone', 'MobilePhone']:
-                    print(f'{phone_number_type} Before Correction: {repr(contact_dict[phone_number_type])}')
+                    # print(f'{phone_number_type} Before Correction: {repr(contact_dict[phone_number_type])}')
                     if contact_dict[phone_number_type] and contact_dict[phone_number_type].strip(): # if not empty and not spaces
                         try:
                             contact_dict[phone_number_type] = fix_phone_number(contact_dict[phone_number_type])
@@ -175,16 +199,26 @@ def main():
                             contact_dict['BadMobileNumber'] = True
                     else:
                         contact_dict[phone_number_type] = None
-                    print(f'{phone_number_type} After Correction: {repr(contact_dict[phone_number_type])}')
+                    # print(f'{phone_number_type} After Correction: {repr(contact_dict[phone_number_type])}')
             
-                print(f'Json dumps result: {json.dumps(contact_dict)}')
+                # print(f'Json dumps result: {json.dumps(contact_dict)}')
 
                 date_of_last_checked = contact_dict['CreatedOn']
 
                 # write contact_dict to after in csv format
+                if before_contact_dict != contact_dict:
+                    before_writer.writerow(before_contact_dict)
+                    after_writer.writerow(contact_dict)
+
+                # before_writer.writerow(before_contact_dict)
+                # after_writer.writerow(contact_dict)
 
         if len(contacts_dicts) < BATCH_SIZE:
             break
+
+        start_date = date_of_last_checked
+
+        # break
 
 
 
