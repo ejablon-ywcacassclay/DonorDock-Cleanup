@@ -32,26 +32,32 @@ def fix_phone_number(phone_number_string):
 # ADDRESS STANDARDIZING FUNCTION
 # ----------------------------------------------------------------
 
-# corrects a US address using the USPS API.
-# If a match is found, it returns the standardized address.
-# If a match is not found, it returns None.
-'''
-def fix_us_address(oauth_token, address_line_1, address_line_2, address_line_3, city, state_or_province, postal_code, country):
-    url = 'https://apis-tem.usps.com/addresses/v3'
-    params = {
-
-    }
-    headers = {
-        'Content-type': 'application/json',
-        'Authorization': 'Bearer aaaaa3LRm6frS4FwZvB3ZMZwdKVNMCEBpBvlFwbT'
-    }
-
-    requests.get(
-        url=url,
-        params=params,
-        headers=headers
+# corrects a US address using the Smarty API.
+# Returns a dictionary of the response.
+def fix_us_address(auth_id, auth_token, address_line_1, address_line_2, address_line_3, city, state_or_province, postal_code, country):
+    response = requests.get(
+        url = 'https://us-street.api.smarty.com/street-address',
+        params = {
+            'street': address_line_1,
+            'street2': address_line_2,
+            'city': city,
+            'state': state_or_province,
+            'zipcode': postal_code,
+            'country': country,
+            'match': 'enhanced'
+        },
+        auth=(
+            auth_id,
+            auth_token
+        )
     )
-'''
+
+    response.raise_for_status()
+
+    response_dict = response.json()
+
+    return response_dict
+
 
 def fix_contact(contact_dict):
     # strip leading and trailing whitespace from all fields
@@ -60,14 +66,16 @@ def fix_contact(contact_dict):
         if type(val) == str and (val.startswith(' ') or val.endswith(' ')):
             contact_dict[key] = val.strip()
 
-    # make call to USPS API to standardize addresses
-    # if status = 200:
-    #     update address in contact_dict based on result
-    # else if error 429:
-    #     save contact_dict['CreatedOn'] as the start date for the next update run
-    #     break loop and end execution
-    # if any other error:
-    #     contact_dict['BadAddress'] = True
+    # retrieve Smarty API credentials from environment variables
+    SMARTY_AUTH_ID = os.getenv('SMARTY_AUTH_ID')
+    SMART_AUTH_TOKEN = os.getenv('SMART_AUTH_TOKEN')
+
+    # make call to Smarty API to standardize addresses
+    if contact_dict['Address1'] is not None and str(contact_dict['Address1']).strip() != '':
+        smarty_response_dict = fix_us_address(SMARTY_AUTH_ID, SMART_AUTH_TOKEN, *[contact_dict[key] for key in
+                ['Address1', 'Address2', 'Address3', 'City', 'StateOrProvince', 'PostalCode', 'Country']])
+    # enhanced_match_codes = smarty_response_dict['enhanced_match'].split()
+
 
     # update phone number using phonenumbers package (update Main? Mobile? Both?)
     for phone_number_type in ['MainPhone', 'MobilePhone']:
@@ -87,7 +95,7 @@ def fix_contact(contact_dict):
 # CLEANUP SCRIPT
 # ----------------------------------------------------------------
 
-BATCH_SIZE = 2
+BATCH_SIZE = 1
 
 csv_schema = ['Id', 'AccountNumber', 'MemberId', 'Title',
         'FirstName', 'MiddleName', 'LastName', 'FullName', 'DisplayName', 'Nickname', 'FormerName',
@@ -165,19 +173,11 @@ def main():
         # client_id = 'your_client_id'
         # client_secret = 'your_client_secret'
 
-        # client = BackendApplicationClient(client_id=client_id)
-        # oauth = OAuth2Session(client=client)
-        # token = oauth.fetch_token(
-        #     token_url='https://apis-tem.usps.com/oauth2/v3/token',
-        #     client_id=client_id,
-        #     client_secret=client_secret
-        # )
-
-
         # ================================================================
         # PREPARING OUTPUT FILES
         # ----------------------------------------------------------------
 
+        # create files if empty or not exist
         if not os.path.isfile('before.csv') or os.path.getsize('before.csv') == 0:
             with open('before.csv', 'w', encoding='utf-8', newline='') as before:
                 csv.writer(before).writerow(csv_schema)
@@ -202,8 +202,16 @@ def main():
                 before_contact_dict = contact_dict.copy()
 
                 print(contact_dict.values())
-                
-                fix_contact(contact_dict)
+
+                try:
+                    fix_contact(contact_dict)
+                except requests.HTTPError as httpe:
+                    if httpe.response.status_code == 429:
+                        break
+                    else:
+                        print(httpe.response.status_code)
+                        print(httpe.response.content)
+                        raise httpe
 
                 date_of_last_checked = contact_dict['CreatedOn']
 
