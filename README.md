@@ -2,6 +2,36 @@
 
 The purpose of this project is to clean up and standardize the DonorDock contact data so that it can be maintained and de-duplicated more easily.
 
+## How to use
+
+### To run the script
+
+Running the script requires:
+- Installing all required packages via pip
+- Loading all required API keys and secrets and DD Tenant ID into the right environment variables
+
+### To analyze results
+
+To analyze the output, import before.csv and after.csv into Excel, then run conditional formatting on all cells of the *after* table using the following formula: =A1<>before!A1
+
+Also suggest viewing side-by-side to see changes more easily, and zooming out to comb through all fields more quickly.
+
+Lastly, the only fields that are ever modified are:
+- Address1
+- Address2
+- Address3
+- City
+- StateOrProvince
+- PostalCode
+- Country
+- BadAddress
+and
+- MainPhone
+- MobilePhone
+- BadMobilePhone
+
+It should be fine to remove all other fields if desired, except for *Id* which may be necessary for importing the validated data back into DonorDock.
+
 ## Overview of design
 
 ### Data flow
