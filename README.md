@@ -29,8 +29,12 @@ and
 - MainPhone
 - MobilePhone
 - BadMobilePhone
+plus
+- County\*
 
 It should be fine to remove all other fields if desired, except for *Id* which may be necessary for importing the validated data back into DonorDock.
+
+\*A note about County: DonorDock mysteriously does not provide the County field via their API, despite it being present in their data and their manual exporting. Furthermore, County is autocompleted by their current Smarty integration when manually entering an address. Thus, County must be included in the corrected (i.e. *after*) data, but it can't be retrieved for the initial (i.e. *before*) data, so it will show as blank for any field that is not being corrected by the Smarty API. This is not a concern, however, because blank fields did not overwrite filled ones upon DonorDock import based on my testing.
 
 ## Overview of design
 

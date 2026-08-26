@@ -260,13 +260,13 @@ def main():
                 before_writer.writerow(before_contact_dict)
                 after_writer.writerow(contact_dict)
 
+                if smarty_request_count > SMARTY_REQUEST_BREAKPOINT:
+                    break
+
         if len(contacts_dicts) < BATCH_SIZE:
             break
 
         start_date = increment_date(date_of_last_checked)
-
-        if smarty_request_count > SMARTY_REQUEST_BREAKPOINT:
-            break
 
     # ================================================================
     # WRITING END DATE
