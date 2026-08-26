@@ -5,6 +5,7 @@ import phonenumbers
 import os
 import re
 import csv
+from datetime import datetime, timedelta
 
 # ================================================================
 # PHONE NUMBER STANDARDIZING FUNCTION
@@ -32,6 +33,8 @@ def fix_phone_number(phone_number_string):
 # ADDRESS STANDARDIZING FUNCTION
 # ----------------------------------------------------------------
 
+smarty_request_count = 0
+
 # corrects a US address using the Smarty API.
 # Returns a dictionary of the response.
 def fix_us_address(auth_id, auth_token, address_line_1, address_line_2, address_line_3, city, state_or_province, postal_code, country):
@@ -44,20 +47,33 @@ def fix_us_address(auth_id, auth_token, address_line_1, address_line_2, address_
             'state': state_or_province,
             'zipcode': postal_code,
             'country': country,
-            'match': 'enhanced'
+            'match': 'enhanced',
+            'candidates': 10
         },
         auth=(
             auth_id,
             auth_token
         )
     )
+    global smarty_request_count
+    smarty_request_count += 1
 
     response.raise_for_status()
+
+    print(response.content)
 
     response_dict = response.json()
 
     return response_dict
 
+def is_deliverable(smarty_response_dict):
+    if 'analysis' not in smarty_response_dict:
+        return False
+    analysis = smarty_response_dict['analysis']
+    return 'dpv_match_code' in analysis \
+            and analysis['dpv_match_code'] == 'Y' \
+            and 'dpv_vacant' in analysis \
+            and analysis['dpv_vacant'] == 'N'
 
 def fix_contact(contact_dict):
     # strip leading and trailing whitespace from all fields
@@ -68,19 +84,31 @@ def fix_contact(contact_dict):
 
     # retrieve Smarty API credentials from environment variables
     SMARTY_AUTH_ID = os.getenv('SMARTY_AUTH_ID')
-    SMART_AUTH_TOKEN = os.getenv('SMART_AUTH_TOKEN')
+    SMARTY_AUTH_TOKEN = os.getenv('SMARTY_AUTH_TOKEN')
 
     # make call to Smarty API to standardize addresses
-    if contact_dict['Address1'] is not None and str(contact_dict['Address1']).strip() != '':
-        smarty_response_dict = fix_us_address(SMARTY_AUTH_ID, SMART_AUTH_TOKEN, *[contact_dict[key] for key in
+    if contact_dict['Address1'] is not None and str(contact_dict['Address1']).strip() != '' and contact_dict['Type'] != 'Organization':
+        smarty_response_dict = fix_us_address(SMARTY_AUTH_ID, SMARTY_AUTH_TOKEN, *[contact_dict[key] for key in
                 ['Address1', 'Address2', 'Address3', 'City', 'StateOrProvince', 'PostalCode', 'Country']])
-    # enhanced_match_codes = smarty_response_dict['enhanced_match'].split()
+        
+        if len(smarty_response_dict) == 1 and is_deliverable(smarty_response_dict[0]):
+            matched_address_dict = smarty_response_dict[0]
+            contact_dict['Address1'] = matched_address_dict['delivery_line_1']
+            contact_dict['Address2'] = matched_address_dict['delivery_line_2'] if 'delivery_line_2' in matched_address_dict.keys() else None
 
+            contact_dict['City'] = matched_address_dict['components']['city_name']
+            contact_dict['StateOrProvince'] = matched_address_dict['components']['state_abbreviation']
+            contact_dict['PostalCode'] = f'{matched_address_dict['components']['zipcode']}-{matched_address_dict['components']['plus4_code']}'
+            contact_dict['Country'] = 'US' # international addresses aren't USPS deliverable
+
+            contact_dict['County'] = matched_address_dict['metadata']['county_name'] # Adding County to the output
+        else:
+            contact_dict['BadAddress'] = True
 
     # update phone number using phonenumbers package (update Main? Mobile? Both?)
     for phone_number_type in ['MainPhone', 'MobilePhone']:
         # print(f'{phone_number_type} Before Correction: {repr(contact_dict[phone_number_type])}')
-        if contact_dict[phone_number_type] and contact_dict[phone_number_type].strip(): # if not empty and not spaces
+        if contact_dict[phone_number_type] and str(contact_dict[phone_number_type]).strip(): # if not empty and not spaces
             try:
                 contact_dict[phone_number_type] = fix_phone_number(contact_dict[phone_number_type])
             except phonenumbers.phonenumberutil.NumberParseException as npe:
@@ -91,11 +119,44 @@ def fix_contact(contact_dict):
 
     # print(f'Json dumps result: {json.dumps(contact_dict)}')
 
+def get_dd_contact_data(dd_api_key, dd_api_secret, dd_tenant_id, batch_size, start_date):
+    dd_api_url = 'https://public-api.donordock.com/api/v1'
+
+    response = requests.get(
+        url=f'{dd_api_url}/Contacts',
+        params={
+            'fromDate': start_date,
+            'take': BATCH_SIZE,
+            'sortDir': 'ASC'
+        },
+        headers={
+            'X-Tenant-Id': dd_tenant_id
+        },
+        auth=(
+            dd_api_key,
+            dd_api_secret
+        )
+    )
+
+    # raise error if there was one
+    response.raise_for_status()
+    
+    contacts_api_result = response.json() # gives dict containing 'data' list containing a dict for each donor
+    contacts_dicts = contacts_api_result['Data']
+
+    return contacts_dicts
+
+def increment_date(iso_date):
+    dt = datetime.fromisoformat(iso_date)
+    dt += timedelta(milliseconds=1)
+    return dt.isoformat(timespec="milliseconds")
+
 # ================================================================
 # CLEANUP SCRIPT
 # ----------------------------------------------------------------
 
-BATCH_SIZE = 1
+BATCH_SIZE = 2
+SMARTY_REQUEST_BREAKPOINT = 10
 
 csv_schema = ['Id', 'AccountNumber', 'MemberId', 'Title',
         'FirstName', 'MiddleName', 'LastName', 'FullName', 'DisplayName', 'Nickname', 'FormerName',
@@ -108,7 +169,7 @@ csv_schema = ['Id', 'AccountNumber', 'MemberId', 'Title',
         'SpouseFirst', 'SpouseLast', 'Badges', 'MarketingLists', 'GiftsInDateRange', 'DonationGiftsInDateRange',
         'EventTicketGiftsInDateRange', 'MembershipGiftsInDateRange', 'VolunteerHoursInDateRange',
         'Owner', 'Affiliation', 'BadAddress', 'Unsubscribed', 'BadMobileNumber', 'SMSUnsubscribed',
-        'CustomFields', 'CreatedOn', 'ModifiedOn']
+        'CustomFields', 'CreatedOn', 'ModifiedOn', 'County']
 
 def main():
 
@@ -126,7 +187,6 @@ def main():
         id_of_last_checked = f.readline().strip()
 
     # Load DD credentials
-    DD_API_URL = 'https://public-api.donordock.com/api/v1'
     DD_API_KEY = os.getenv('DD_SANDBOX_API_KEY')
     DD_API_SECRET = os.getenv('DD_SANDBOX_API_SECRET')
     DD_TENANT_ID = os.getenv('DD_SANDBOX_TENANT_ID')
@@ -144,35 +204,9 @@ def main():
         # API REQUEST FOR DATA TO STANDARDIZE
         # ----------------------------------------------------------------
         
-        response = requests.get(
-            url=f'{DD_API_URL}/Contacts',
-            params={
-                'fromDate': start_date,
-                'take': BATCH_SIZE,
-                'sortDir': 'ASC'
-            },
-            headers={
-                'X-Tenant-Id': DD_TENANT_ID
-            },
-            auth=(
-                DD_API_KEY,
-                DD_API_SECRET
-            )
-        )
-
-        # raise error if there was one
-        response.raise_for_status()
+        contacts_dicts = get_dd_contact_data(dd_api_key=DD_API_KEY, dd_api_secret=DD_API_SECRET,
+                                            dd_tenant_id=DD_TENANT_ID, batch_size=BATCH_SIZE, start_date=start_date)
         
-        contacts_api_result = response.json() # gives dict containing 'data' list containing a dict for each donor
-        contacts_dicts = contacts_api_result['Data']
-
-        # ================================================================
-        # GETTING OAUTH CREDENTIALS FOR USPS API
-        # ----------------------------------------------------------------
-
-        # client_id = 'your_client_id'
-        # client_secret = 'your_client_secret'
-
         # ================================================================
         # PREPARING OUTPUT FILES
         # ----------------------------------------------------------------
@@ -199,18 +233,24 @@ def main():
             date_of_last_checked = start_date
             for contact_dict in contacts_dicts:
 
-                before_contact_dict = contact_dict.copy()
+                contact_dict.update({'County': None}) # add blank County field to enable inclusion in output
+
+                before_contact_dict = contact_dict.copy() # saves initial state of contact
 
                 print(contact_dict.values())
 
                 try:
                     fix_contact(contact_dict)
                 except requests.HTTPError as httpe:
-                    if httpe.response.status_code == 429:
+                    if httpe.response.status_code == 429: # 429 is acceptable, and means we should wait until next available time
+                        break
+                    elif httpe.response.status_code in [401, 403]:
+                        print(httpe.response.content)
+                        print(httpe.response.status_code)
                         break
                     else:
-                        print(httpe.response.status_code)
                         print(httpe.response.content)
+                        print(httpe.response.status_code)
                         raise httpe
 
                 date_of_last_checked = contact_dict['CreatedOn']
@@ -223,9 +263,10 @@ def main():
         if len(contacts_dicts) < BATCH_SIZE:
             break
 
-        start_date = date_of_last_checked
+        start_date = increment_date(date_of_last_checked)
 
-        break
+        if smarty_request_count > SMARTY_REQUEST_BREAKPOINT:
+            break
 
     # ================================================================
     # WRITING END DATE
