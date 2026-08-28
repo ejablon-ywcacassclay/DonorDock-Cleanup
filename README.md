@@ -55,3 +55,9 @@ These fields are used because they already exist in the database. Because they a
 - DonorDock API
 - *phonenumbers* Python library
 - USPS or Smarty address validation API
+
+## Challenges and things learned
+
+- DonorDock API does not expose County via API, despite it being in their data. However, if a field is blank, it doesn't seem to overwrite any existing fields when imported into DonorDock.
+- USPS API makes addresses into **ALL CAPS**, which looks very weird, and the API is not intended to be used for cleaning databases.
+- Smarty API will consider ANY address to be valid if it has what's known as a [unique zipcode](https://www.smarty.com/articles/unique-zip-codes). It will even tell you that the address is *in the USPS database*, even if it's completely bogus. To work around this, the script checks for addresses that are *deliverable*, basically meaning they are valid AND have been delivered to before.

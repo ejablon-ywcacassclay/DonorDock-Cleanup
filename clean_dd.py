@@ -57,6 +57,7 @@ def fix_us_address(auth_id, auth_token, address_line_1, address_line_2, address_
     )
     global smarty_request_count
     smarty_request_count += 1
+    print(f'smarty_request_count in fix_us_address: {smarty_request_count}\n')
 
     response.raise_for_status()
 
@@ -66,15 +67,27 @@ def fix_us_address(auth_id, auth_token, address_line_1, address_line_2, address_
 
     return response_dict
 
+# Checks whether Smarty response indicates the address is deliverable.
+# Pass in the Smarty response as a Python dictionary
 def is_deliverable(smarty_response_dict):
+    # ensures that the parameter dictionary contains data
     if 'analysis' not in smarty_response_dict:
         return False
     analysis = smarty_response_dict['analysis']
+    # dpv_match_code of Y means the address is valid.
+    # dpv_vacant of N means the address has been specifically labeled as deliverable.
     return 'dpv_match_code' in analysis \
             and analysis['dpv_match_code'] == 'Y' \
             and 'dpv_vacant' in analysis \
             and analysis['dpv_vacant'] == 'N'
 
+# Fixes a contact record. Pass in the contact as a dictionary of its values.
+# Removes leading + trailing whitespace from string fields,
+# standardizes phone numbers, and
+# validates addresses.
+# Throws errors if Smarty request fails in a way other than rate limiting.
+# Otherwise, returns True if fix succeeds, and False if it fails.
+# The contact dictionary is modified directly.
 def fix_contact(contact_dict):
     # strip leading and trailing whitespace from all fields
     for key in contact_dict:
@@ -95,6 +108,7 @@ def fix_contact(contact_dict):
             matched_address_dict = smarty_response_dict[0]
             contact_dict['Address1'] = matched_address_dict['delivery_line_1']
             contact_dict['Address2'] = matched_address_dict['delivery_line_2'] if 'delivery_line_2' in matched_address_dict.keys() else None
+            # we ignore address line 3 because that is what seems to happen inside DonorDock's integration of Smarty autocomplete.
 
             contact_dict['City'] = matched_address_dict['components']['city_name']
             contact_dict['StateOrProvince'] = matched_address_dict['components']['state_abbreviation']
@@ -119,6 +133,7 @@ def fix_contact(contact_dict):
 
     # print(f'Json dumps result: {json.dumps(contact_dict)}')
 
+# Performs the API request for the DonorDock data.
 def get_dd_contact_data(dd_api_key, dd_api_secret, dd_tenant_id, batch_size, start_date):
     dd_api_url = 'https://public-api.donordock.com/api/v1'
 
@@ -126,7 +141,7 @@ def get_dd_contact_data(dd_api_key, dd_api_secret, dd_tenant_id, batch_size, sta
         url=f'{dd_api_url}/Contacts',
         params={
             'fromDate': start_date,
-            'take': BATCH_SIZE,
+            'take': batch_size,
             'sortDir': 'ASC'
         },
         headers={
@@ -146,17 +161,49 @@ def get_dd_contact_data(dd_api_key, dd_api_secret, dd_tenant_id, batch_size, sta
 
     return contacts_dicts
 
+# Increments a date string that's passed in in ISO format by one millisecond.
+# Used to skip over the record that was just checked.
 def increment_date(iso_date):
     dt = datetime.fromisoformat(iso_date)
     dt += timedelta(milliseconds=1)
     return dt.isoformat(timespec="milliseconds")
 
+# Prepares the output CSV files with headers,
+# if they are empty or missing.
+def prepare_output_files():
+    # create files if empty or not exist
+    if not os.path.isfile('before.csv') or os.path.getsize('before.csv') == 0:
+        with open('before.csv', 'w', encoding='utf-8', newline='') as before:
+            csv.writer(before).writerow(csv_schema)
+    if not os.path.isfile('after.csv') or os.path.getsize('after.csv') == 0:
+        with open('after.csv', 'w', encoding='utf-8', newline='') as after:
+            csv.writer(after).writerow(csv_schema)
+
+# Attempts to fix the contact that is passed in. Returns True if successful, and False if there are any HTTPErrors.
+# If there are any unexpected HTTP errors, the function raises them.
+def try_fix_contact(contact_dict: dict):
+    try:
+        fix_contact(contact_dict)
+    except requests.HTTPError as httpe:
+        if httpe.response.status_code == 429: # 429 is acceptable, and means we should wait until next available time
+            return False
+        elif httpe.response.status_code in [401, 403]:
+            print(httpe.response.content)
+            print(httpe.response.status_code)
+            return False
+        else:
+            print(httpe.response.content)
+            print(httpe.response.status_code)
+            raise httpe
+    else:
+        return True
+
 # ================================================================
 # CLEANUP SCRIPT
 # ----------------------------------------------------------------
 
-BATCH_SIZE = 2
-SMARTY_REQUEST_BREAKPOINT = 10
+BATCH_SIZE = 1 # Number of contacts retrieved per DonorDock query
+SMARTY_REQUEST_BREAKPOINT = 1 # Max number of Smarty requests. Records stop being processed after this number of requests have been made.
 
 csv_schema = ['Id', 'AccountNumber', 'MemberId', 'Title',
         'FirstName', 'MiddleName', 'LastName', 'FullName', 'DisplayName', 'Nickname', 'FormerName',
@@ -184,9 +231,11 @@ def main():
         print(repr(start_date))
         if not re.fullmatch(iso_timestamp_pattern, start_date):
             raise ValueError('Start Date in helper file is not valid')
-        id_of_last_checked = f.readline().strip()
 
-    # Load DD credentials
+    # ================================================================
+    # LOADING DD CREDENTIALS
+    # ----------------------------------------------------------------
+
     DD_API_KEY = os.getenv('DD_SANDBOX_API_KEY')
     DD_API_SECRET = os.getenv('DD_SANDBOX_API_SECRET')
     DD_TENANT_ID = os.getenv('DD_SANDBOX_TENANT_ID')
@@ -194,11 +243,12 @@ def main():
     # Log whether DD credentials loaded
     print('DD_API_KEY loaded:', DD_API_KEY is not None)
     print('DD_API_SECRET loaded:', DD_API_SECRET is not None)
-    print('DD_TENANT_ID:', repr(DD_TENANT_ID))
+    print('DD_TENANT_ID loaded:', DD_TENANT_ID is not None)
 
     # do-while loop pattern.
     # Loop ends when no contact records are left. Loop also breaks when API rate limits are reached.
-    while True:
+    stop_loop = False
+    while not stop_loop:
 
         # ================================================================
         # API REQUEST FOR DATA TO STANDARDIZE
@@ -211,13 +261,7 @@ def main():
         # PREPARING OUTPUT FILES
         # ----------------------------------------------------------------
 
-        # create files if empty or not exist
-        if not os.path.isfile('before.csv') or os.path.getsize('before.csv') == 0:
-            with open('before.csv', 'w', encoding='utf-8', newline='') as before:
-                csv.writer(before).writerow(csv_schema)
-        if not os.path.isfile('after.csv') or os.path.getsize('after.csv') == 0:
-            with open('after.csv', 'w', encoding='utf-8', newline='') as after:
-                csv.writer(after).writerow(csv_schema)
+        prepare_output_files()
 
         with open('before.csv', 'a', encoding='utf-8', newline='') as before, \
                 open('after.csv', 'a', encoding='utf-8', newline='') as after:
@@ -239,42 +283,36 @@ def main():
 
                 print(contact_dict.values())
 
-                try:
-                    fix_contact(contact_dict)
-                except requests.HTTPError as httpe:
-                    if httpe.response.status_code == 429: # 429 is acceptable, and means we should wait until next available time
-                        break
-                    elif httpe.response.status_code in [401, 403]:
-                        print(httpe.response.content)
-                        print(httpe.response.status_code)
-                        break
-                    else:
-                        print(httpe.response.content)
-                        print(httpe.response.status_code)
-                        raise httpe
+                # if fix_contact does not succeed, stop execution.
+                if not try_fix_contact(contact_dict):
+                    stop_loop = True
+                    break
 
                 date_of_last_checked = contact_dict['CreatedOn']
 
                 # write contact_dict to after in csv format
-                # if before_contact_dict != contact_dict:
-                before_writer.writerow(before_contact_dict)
-                after_writer.writerow(contact_dict)
+                if before_contact_dict != contact_dict:
+                    before_writer.writerow(before_contact_dict)
+                    after_writer.writerow(contact_dict)
 
-                if smarty_request_count > SMARTY_REQUEST_BREAKPOINT:
+                print(f'smarty_request_count: {smarty_request_count}\n')
+                print(f'SMARTY_REQUEST_BREAKPOINT: {SMARTY_REQUEST_BREAKPOINT}\n')
+
+                start_date = increment_date(date_of_last_checked)
+
+                if smarty_request_count >= SMARTY_REQUEST_BREAKPOINT:
+                    stop_loop = True
                     break
-
+        
         if len(contacts_dicts) < BATCH_SIZE:
             break
-
-        start_date = increment_date(date_of_last_checked)
 
     # ================================================================
     # WRITING END DATE
     # ----------------------------------------------------------------
     
-    # with open('start_date.txt', 'w') as f:
-    #    f.write(date_of_last_checked + '\n')
-    #    f.write(id_of_last_checked)
+    with open('start_date.txt', 'w') as f:
+       f.write(start_date)
 
 if __name__ == '__main__':
     main()
