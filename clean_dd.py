@@ -304,7 +304,7 @@ def main():
                     stop_loop = True
                     break
         
-        if len(contacts_dicts) < BATCH_SIZE:
+        if len(contacts_dicts) < BATCH_SIZE: # this would mean we reached the end of the DonorDock data
             break
 
     # ================================================================

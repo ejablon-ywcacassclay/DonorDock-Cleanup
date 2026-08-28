@@ -82,7 +82,6 @@ class TestIncrementDateFunction(unittest.TestCase):
     def test_day_changing(self):
         test_date = '2026-07-24T23:59:59.999'
         self.assertEqual(clean_dd.increment_date(test_date), '2026-07-25T00:00:00.000')
-            
 
 class TestFixContactFunction(unittest.TestCase):
     test_contact = dict(zip(clean_dd.csv_schema, ['efwa2342uh34u2ih87fg', 'DD-1', None, 'Mr.', 'John', None, 'Doe', 'John Doe', 'John Doe', None, None, None, 'John Doe', 'Dear John Doe', None, 'john.doe@email.com', None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, False, False, 'INDIVIDUAL', None, 'PROSPECT', 'ebuhf57d7feu9', None, None, None, None, None, None, None, None, '', None, None, None, None, None, None, None, 'FALSE', None, None, None, None, [], '2026-07-24T19:25:26.527', '2026-08-19T21:31:47.197', None]))
