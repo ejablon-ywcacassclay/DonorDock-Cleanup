@@ -100,7 +100,10 @@ def fix_contact(contact_dict):
     SMARTY_AUTH_TOKEN = os.getenv('SMARTY_AUTH_TOKEN')
 
     # make call to Smarty API to standardize addresses
-    if contact_dict['Address1'] is not None and str(contact_dict['Address1']).strip() != '' and contact_dict['Type'] != 'Organization':
+    # if address exists, contact is not Organization, and contact does not have Do Not Solicit
+    if contact_dict['Address1'] is not None and str(contact_dict['Address1']).strip() != '' \
+            and contact_dict['Type'] is not None and contact_dict['Type'].lower() != 'organization' \
+            and contact_dict['DoNotSolicit'] is not True and str(contact_dict['DoNotSolicit']).lower() != 'true':
         smarty_response_dict = fix_us_address(SMARTY_AUTH_ID, SMARTY_AUTH_TOKEN, *[contact_dict[key] for key in
                 ['Address1', 'Address2', 'Address3', 'City', 'StateOrProvince', 'PostalCode', 'Country']])
         
@@ -120,13 +123,13 @@ def fix_contact(contact_dict):
             contact_dict['BadAddress'] = True
 
     # update phone number using phonenumbers package (update Main? Mobile? Both?)
-    for phone_number_type in ['MainPhone', 'MobilePhone']:
+    for phone_number_type, phone_number_flag in ['MainPhone', 'MobilePhone'], ['BadMainNumber', 'BadMobileNumber']:
         # print(f'{phone_number_type} Before Correction: {repr(contact_dict[phone_number_type])}')
         if contact_dict[phone_number_type] and str(contact_dict[phone_number_type]).strip(): # if not empty and not spaces
             try:
                 contact_dict[phone_number_type] = fix_phone_number(contact_dict[phone_number_type])
             except phonenumbers.phonenumberutil.NumberParseException as npe:
-                contact_dict['BadMobileNumber'] = True
+                contact_dict[phone_number_flag] = True
         else:
             contact_dict[phone_number_type] = None
         # print(f'{phone_number_type} After Correction: {repr(contact_dict[phone_number_type])}')
@@ -202,21 +205,21 @@ def try_fix_contact(contact_dict: dict):
 # CLEANUP SCRIPT
 # ----------------------------------------------------------------
 
-BATCH_SIZE = 1 # Number of contacts retrieved per DonorDock query
-SMARTY_REQUEST_BREAKPOINT = 1 # Max number of Smarty requests. Records stop being processed after this number of requests have been made.
+BATCH_SIZE = 1000 # Number of contacts retrieved per DonorDock query
+SMARTY_REQUEST_BREAKPOINT = 50 # Max number of Smarty requests. Records stop being processed after this number of requests have been made.
 
 csv_schema = ['Id', 'AccountNumber', 'MemberId', 'Title',
         'FirstName', 'MiddleName', 'LastName', 'FullName', 'DisplayName', 'Nickname', 'FormerName',
         'OrganizationName', 'Addressee', 'Salutation', 'Suffix', 'Email', 'DOB',
-        'Address1', 'Address2', 'Address3', 'City', 'StateOrProvince', 'PostalCode', 'Country',
-        'MainPhone', 'MobilePhone', 'Fax', 'Website',
+        'Address1', 'Address2', 'Address3', 'City', 'StateOrProvince', 'PostalCode', 'Country', 'County', 
+        'MainPhone', 'BadMainNumber', 'MobilePhone', 'BadMobileNumber', 'Fax', 'Website',
         'FacebookUsername', 'InstagramUsername', 'LinkedInUsername', 'TwitterUsername',
         'DoNotSolicit', 'Deceased', 'Type', 'Description', 'Stage', 'IntegrationId',
         'Source', 'ExceptionNotes', 'Employer', 'JobTitle', 'Household', 'HouseholdRole',
         'SpouseFirst', 'SpouseLast', 'Badges', 'MarketingLists', 'GiftsInDateRange', 'DonationGiftsInDateRange',
         'EventTicketGiftsInDateRange', 'MembershipGiftsInDateRange', 'VolunteerHoursInDateRange',
-        'Owner', 'Affiliation', 'BadAddress', 'Unsubscribed', 'BadMobileNumber', 'SMSUnsubscribed',
-        'CustomFields', 'CreatedOn', 'ModifiedOn', 'County']
+        'Owner', 'Affiliation', 'BadAddress', 'Unsubscribed', 'SMSUnsubscribed',
+        'CustomFields', 'CreatedOn', 'ModifiedOn']
 
 def main():
 
@@ -236,9 +239,9 @@ def main():
     # LOADING DD CREDENTIALS
     # ----------------------------------------------------------------
 
-    DD_API_KEY = os.getenv('DD_SANDBOX_API_KEY')
-    DD_API_SECRET = os.getenv('DD_SANDBOX_API_SECRET')
-    DD_TENANT_ID = os.getenv('DD_SANDBOX_TENANT_ID')
+    DD_API_KEY = os.getenv('DD_API_KEY')
+    DD_API_SECRET = os.getenv('DD_API_SECRET')
+    DD_TENANT_ID = os.getenv('DD_TENANT_ID')
 
     # Log whether DD credentials loaded
     print('DD_API_KEY loaded:', DD_API_KEY is not None)
@@ -277,16 +280,19 @@ def main():
             date_of_last_checked = start_date
             for contact_dict in contacts_dicts:
 
-                contact_dict.update({'County': None}) # add blank County field to enable inclusion in output
+                # add new blank fields to enable inclusion in output
+                contact_dict.update({'County': None, 'BadMainNumber': None})
 
                 before_contact_dict = contact_dict.copy() # saves initial state of contact
 
-                print(contact_dict.values())
+                print(contact_dict)
 
-                # if fix_contact does not succeed, stop execution.
-                if not try_fix_contact(contact_dict):
-                    stop_loop = True
-                    break
+                # No need to try to correct contacts who are Deceased or not Active
+                if not contact_dict['Deceased'] and contact_dict['Stage'] is not None and contact_dict['Stage'].lower() == 'active':
+                    # if fix_contact does not succeed, stop execution.
+                    if not try_fix_contact(contact_dict):
+                        stop_loop = True
+                        break
 
                 date_of_last_checked = contact_dict['CreatedOn']
 
