@@ -101,9 +101,9 @@ def fix_contact(contact_dict):
 
     # make call to Smarty API to standardize addresses
     # if address exists, contact is not Organization, and contact does not have Do Not Solicit
-    if contact_dict['Address1'] is not None and str(contact_dict['Address1']).strip() != '' \
-            and contact_dict['Type'] is not None and contact_dict['Type'].lower() != 'organization' \
-            and contact_dict['DoNotSolicit'] is not True and str(contact_dict['DoNotSolicit']).lower() != 'true':
+    if (contact_dict['Address1'] is not None and str(contact_dict['Address1']).strip() != '') \
+            and (contact_dict['Type'] is not None and contact_dict['Type'].strip().lower() == 'individual') \
+            and (not contact_dict['DoNotSolicit'] and str(contact_dict['DoNotSolicit']).strip().lower() != 'true'):
         smarty_response_dict = fix_us_address(SMARTY_AUTH_ID, SMARTY_AUTH_TOKEN, *[contact_dict[key] for key in
                 ['Address1', 'Address2', 'Address3', 'City', 'StateOrProvince', 'PostalCode', 'Country']])
         
@@ -123,8 +123,11 @@ def fix_contact(contact_dict):
             contact_dict['BadAddress'] = True
 
     # update phone number using phonenumbers package (update Main? Mobile? Both?)
-    for phone_number_type, phone_number_flag in ['MainPhone', 'MobilePhone'], ['BadMainNumber', 'BadMobileNumber']:
-        # print(f'{phone_number_type} Before Correction: {repr(contact_dict[phone_number_type])}')
+    for phone_number_type, phone_number_flag in zip(
+        ['MainPhone', 'MobilePhone'],
+        ['BadMainNumber', 'BadMobileNumber']
+    ):
+        print(f'{phone_number_type} Before Correction: {repr(contact_dict[phone_number_type])}')
         if contact_dict[phone_number_type] and str(contact_dict[phone_number_type]).strip(): # if not empty and not spaces
             try:
                 contact_dict[phone_number_type] = fix_phone_number(contact_dict[phone_number_type])
@@ -132,7 +135,7 @@ def fix_contact(contact_dict):
                 contact_dict[phone_number_flag] = True
         else:
             contact_dict[phone_number_type] = None
-        # print(f'{phone_number_type} After Correction: {repr(contact_dict[phone_number_type])}')
+        print(f'{phone_number_type} After Correction: {repr(contact_dict[phone_number_type])}')
 
     # print(f'Json dumps result: {json.dumps(contact_dict)}')
 

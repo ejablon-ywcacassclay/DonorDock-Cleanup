@@ -84,7 +84,8 @@ class TestIncrementDateFunction(unittest.TestCase):
         self.assertEqual(clean_dd.increment_date(test_date), '2026-07-25T00:00:00.000')
 
 class TestFixContactFunction(unittest.TestCase):
-    test_contact = dict(zip(clean_dd.csv_schema, ['efwa2342uh34u2ih87fg', 'DD-1', None, 'Mr.', 'John', None, 'Doe', 'John Doe', 'John Doe', None, None, None, 'John Doe', 'Dear John Doe', None, 'john.doe@email.com', None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, False, False, 'INDIVIDUAL', None, 'PROSPECT', 'ebuhf57d7feu9', None, None, None, None, None, None, None, None, '', None, None, None, None, None, None, None, 'FALSE', None, None, None, None, [], '2026-07-24T19:25:26.527', '2026-08-19T21:31:47.197', None]))
+
+    test_contact = dict(zip(clean_dd.csv_schema, ['efwa2342uh34u2ih87fg', 'DD-1', None, 'Mr.', 'John', None, 'Doe', 'John Doe', 'John Doe', None, None, None, 'John Doe', 'Dear John Doe', None, 'john.doe@email.com', None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, False, False, 'INDIVIDUAL', None, 'PROSPECT', 'ebuhf57d7feu9', None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, [], '2026-07-24T19:25:26.527', '2026-08-19T21:31:47.197']))
 
     maxDiff = None
 
@@ -99,8 +100,10 @@ class TestFixContactFunction(unittest.TestCase):
     def test_phone_number_invalid(self):
         invalid_phone_test_contact = self.test_contact.copy()
         invalid_phone_test_contact['MainPhone'] = '123456789'
+        print(invalid_phone_test_contact)
         clean_dd.fix_contact(invalid_phone_test_contact)
-        self.assertEqual(invalid_phone_test_contact['BadMobileNumber'], True)
+        print(invalid_phone_test_contact)
+        self.assertEqual(invalid_phone_test_contact['BadMainNumber'], True)
 
     def test_address_invalid(self):
         # this address is not a real place
@@ -113,11 +116,14 @@ class TestFixContactFunction(unittest.TestCase):
             'PostalCode': '58104',
             'Country': 'US'
         }
+
         expected = self.test_contact.copy()
         expected.update(test_address)
         expected.update({'BadAddress': True})
+
         invalid_address_test_contact = self.test_contact.copy()
         invalid_address_test_contact.update(test_address)
+
         clean_dd.fix_contact(invalid_address_test_contact)
         self.assertEqual(invalid_address_test_contact, expected)
 
@@ -148,10 +154,14 @@ class TestFixContactFunction(unittest.TestCase):
 
         invalid_address_test_contact = self.test_contact.copy()
         invalid_address_test_contact.update(test_address)
+        invalid_address_test_contact.update({
+            'Type': 'INDIVIDUAL',
+            'DoNotSolicit': False
+        })
 
         clean_dd.fix_contact(invalid_address_test_contact)
         self.assertEqual(invalid_address_test_contact, expected)
 
 
 if __name__ == '__main__':
-    unittest.main()
+    unittest.main(verbosity=2)
