@@ -137,7 +137,7 @@ def fix_contact(contact_dict):
     # print(f'Json dumps result: {json.dumps(contact_dict)}')
 
 # Performs the API request for the DonorDock data.
-def get_dd_contact_data(dd_api_key, dd_api_secret, dd_tenant_id, batch_size, start_date):
+def get_dd_contact_batch(dd_api_key, dd_api_secret, dd_tenant_id, batch_size, start_date):
     dd_api_url = 'https://public-api.donordock.com/api/v1'
 
     response = requests.get(
@@ -257,7 +257,7 @@ def main():
         # API REQUEST FOR DATA TO STANDARDIZE
         # ----------------------------------------------------------------
         
-        contacts_dicts = get_dd_contact_data(dd_api_key=DD_API_KEY, dd_api_secret=DD_API_SECRET,
+        contacts_dicts = get_dd_contact_batch(dd_api_key=DD_API_KEY, dd_api_secret=DD_API_SECRET,
                                             dd_tenant_id=DD_TENANT_ID, batch_size=BATCH_SIZE, start_date=start_date)
         
         # ================================================================

@@ -1,0 +1,102 @@
+import os
+import clean_dd
+import csv
+import requests
+
+def get_dd_contact(dd_api_key, dd_api_secret, dd_tenant_id, contact_id):
+    dd_api_url = 'https://public-api.donordock.com/api/v1'
+
+    response = requests.get(
+        url=f'{dd_api_url}/Contacts/{contact_id}',
+        headers={
+            'X-Tenant-Id': dd_tenant_id
+        },
+        auth=(
+            dd_api_key,
+            dd_api_secret
+        )
+    )
+
+    # raise error if there was one
+    response.raise_for_status()
+    return response.json() # gives dict containing 'data' list containing a dict for each donor
+
+def main():
+
+    # get ID of last record checked
+    with open('id_of_last_checked.txt', 'r') as f:
+        # id is string of letters and numbers
+        id_of_last_checked = f.readline().strip()
+
+    # retrieve DonorDock credentials
+    DD_API_KEY = os.getenv('DD_API_KEY')
+    DD_API_SECRET = os.getenv('DD_API_SECRET')
+    DD_TENANT_ID = os.getenv('DD_TENANT_ID')
+
+    # Log whether DD credentials loaded
+    print('DD_API_KEY loaded:', DD_API_KEY is not None)
+    print('DD_API_SECRET loaded:', DD_API_SECRET is not None)
+    print('DD_TENANT_ID loaded:', DD_TENANT_ID is not None)
+
+    clean_dd.prepare_output_files()
+
+    # open the ID list and the output files
+    with open(file='list_of_ids.txt', mode='r') as ids, \
+            open('before.csv', 'a', encoding='utf-8', newline='') as before, \
+            open('after.csv', 'a', encoding='utf-8', newline='') as after:
+
+        before_writer = csv.DictWriter(f=before, fieldnames=clean_dd.csv_schema)
+        after_writer = csv.DictWriter(f=after, fieldnames=clean_dd.csv_schema)
+        
+        # load the first ID to modify
+        contact_id = ids.readline() # read first line
+        if len(id_of_last_checked) > 0: # if there is an ID of last modified record:
+            while contact_id != id_of_last_checked: # until we find the ID of the last modified:
+                contact_id = ids.readline() # read the next ID in the list
+            contact_id = ids.readline() # read the next ID now that we have found the previously modified ID
+
+        # do-while loop pattern.
+        # Loop ends when no contact records are left. Loop also breaks when API rate limits are reached.
+        while contact_id:
+            
+            contact_dict = get_dd_contact(dd_api_key=DD_API_KEY, dd_api_secret=DD_API_SECRET,
+                                            dd_tenant_id=DD_TENANT_ID, contact_id=contact_id)
+
+            before_writer = csv.DictWriter(f=before, fieldnames=clean_dd.csv_schema)
+            after_writer = csv.DictWriter(f=after, fieldnames=clean_dd.csv_schema)
+
+            # add new blank fields to enable inclusion in output
+            contact_dict.update({'County': None, 'BadMainNumber': None})
+
+            before_contact_dict = contact_dict.copy() # saves initial state of contact
+
+            print(contact_dict)
+
+            # No need to try to correct contacts who are Deceased
+            if not contact_dict['Deceased'] and contact_dict['Stage'] is not None and contact_dict['Stage'].lower() == 'active':
+                # if fix_contact does not succeed, stop execution.
+                if not clean_dd.try_fix_contact(contact_dict):
+                    break
+
+            id_of_last_checked = contact_dict['Id']
+
+            # write contact_dict to after in csv format
+            if before_contact_dict != contact_dict:
+                before_writer.writerow(before_contact_dict)
+                after_writer.writerow(contact_dict)
+
+            print()
+            print(f'smarty_request_count: {clean_dd.smarty_request_count}')
+            print(f'SMARTY_REQUEST_BREAKPOINT: {clean_dd.SMARTY_REQUEST_BREAKPOINT}')
+            print()
+
+            if clean_dd.smarty_request_count >= clean_dd.SMARTY_REQUEST_BREAKPOINT:
+                break
+
+    # record ID of last record checked
+    with open('id_of_last_checked.txt', 'w') as f:
+        f.write(id_of_last_checked)
+        
+
+if __name__ == '__main__':
+    main()
