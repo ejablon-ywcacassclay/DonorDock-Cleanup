@@ -49,15 +49,17 @@ def main():
         after_writer = csv.DictWriter(f=after, fieldnames=clean_dd.csv_schema)
         
         # load the first ID to modify
-        contact_id = ids.readline() # read first line
+        contact_id = ids.readline().strip() # read first line
         if len(id_of_last_checked) > 0: # if there is an ID of last modified record:
             while contact_id != id_of_last_checked: # until we find the ID of the last modified:
-                contact_id = ids.readline() # read the next ID in the list
-            contact_id = ids.readline() # read the next ID now that we have found the previously modified ID
+                contact_id = ids.readline().strip() # read the next ID in the list
+            contact_id = ids.readline().strip() # read the next ID now that we have found the previously modified ID
 
-        # do-while loop pattern.
-        # Loop ends when no contact records are left. Loop also breaks when API rate limits are reached.
+        # loop until contact_id is empty
+        loop_counter = 0
         while contact_id:
+            loop_counter += 1
+            print(f'\nITERATION NUMBER {loop_counter}:')
             
             contact_dict = get_dd_contact(dd_api_key=DD_API_KEY, dd_api_secret=DD_API_SECRET,
                                             dd_tenant_id=DD_TENANT_ID, contact_id=contact_id)
@@ -72,11 +74,9 @@ def main():
 
             print(contact_dict)
 
-            # No need to try to correct contacts who are Deceased
-            if not contact_dict['Deceased'] and contact_dict['Stage'] is not None and contact_dict['Stage'].lower() == 'active':
-                # if fix_contact does not succeed, stop execution.
-                if not clean_dd.try_fix_contact(contact_dict):
-                    break
+            # if fix_contact does not succeed, stop execution.
+            if not clean_dd.try_fix_contact(contact_dict):
+                break
 
             id_of_last_checked = contact_dict['Id']
 
@@ -92,6 +92,8 @@ def main():
 
             if clean_dd.smarty_request_count >= clean_dd.SMARTY_REQUEST_BREAKPOINT:
                 break
+
+            contact_id = ids.readline().strip() # read next ID line
 
     # record ID of last record checked
     with open('id_of_last_checked.txt', 'w') as f:

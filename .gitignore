@@ -3,3 +3,4 @@ before.csv
 __pycache__/
 id_of_last_checked.txt
 list_of_ids.txt
+start_date.txt

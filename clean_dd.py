@@ -89,6 +89,8 @@ def is_deliverable(smarty_response_dict):
 # Otherwise, returns True if fix succeeds, and False if it fails.
 # The contact dictionary is modified directly.
 def fix_contact(contact_dict):
+    print(f'\nCONTACT BEING FIXED....\n{contact_dict}')
+
     # strip leading and trailing whitespace from all fields
     for key in contact_dict:
         val = contact_dict[key]
@@ -103,11 +105,13 @@ def fix_contact(contact_dict):
     # if address exists, contact is not Organization, and contact does not have Do Not Solicit
     if (contact_dict['Address1'] is not None and str(contact_dict['Address1']).strip() != '') \
             and (contact_dict['Type'] is not None and contact_dict['Type'].strip().lower() == 'individual') \
-            and (not contact_dict['DoNotSolicit'] and str(contact_dict['DoNotSolicit']).strip().lower() != 'true'):
+            and str(contact_dict['DoNotSolicit']).strip().lower() != 'true':
+        print('address is being checked...')
         smarty_response_dict = fix_us_address(SMARTY_AUTH_ID, SMARTY_AUTH_TOKEN, *[contact_dict[key] for key in
                 ['Address1', 'Address2', 'Address3', 'City', 'StateOrProvince', 'PostalCode', 'Country']])
         
         if len(smarty_response_dict) == 1 and is_deliverable(smarty_response_dict[0]):
+            print('address approved')
             matched_address_dict = smarty_response_dict[0]
             contact_dict['Address1'] = matched_address_dict['delivery_line_1']
             contact_dict['Address2'] = matched_address_dict['delivery_line_2'] if 'delivery_line_2' in matched_address_dict.keys() else None
@@ -120,6 +124,7 @@ def fix_contact(contact_dict):
 
             contact_dict['County'] = matched_address_dict['metadata']['county_name'] # Adding County to the output
         else:
+            print('address bad.')
             contact_dict['BadAddress'] = True
 
     # update phone number using phonenumbers package (update Main? Mobile? Both?)
@@ -201,8 +206,7 @@ def try_fix_contact(contact_dict: dict):
             print(httpe.response.content)
             print(httpe.response.status_code)
             raise httpe
-    else:
-        return True
+    return True
 
 # ================================================================
 # CLEANUP SCRIPT
