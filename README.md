@@ -107,5 +107,3 @@ Diagrams created using Plant UML.
 
 ### Activity diagram of clean_from_list_of_ids execution
 ![Flowchart of donor data cleansing workflow. The process retrieves donor records from the DonorDock API, validates eligible addresses using Smarty, updates records with standardized addresses when a single deliverable match is found, flags invalid addresses and phone numbers, writes original and updated data to CSV files, and repeats for each donor record until all records have been processed.](https://www.plantuml.com/plantuml/png/RP91Rjj034NtSug_b86W1x0MJOfikcXG8Bq0BL8MqT6CmA4KkwUlHrF3HT6D896V3_zJV2vEvkiSGzZVmd5POyIeLXpAVGWcYz2jVXO7anD6opDUSyhsceUVUFd-zQRI4Tr41SHiKieJj40JwwQyKdm29KRAVfjxo_wUemxgdm_mIHAwgvH308v54jy9y8ptcSolVG0gNYuqUBmY9y5CFaoDgWKiKJSnEaNv1tc3hWkJor_ODbof4ekWI_cFieZZ2_7BG_d3Ljc5YNKCxHcEv2xpubKmP3CP7CjKNQLrFecLVj_6Hb7v7h5zxI7_Dr9HnIan6UilOOpPPl8-t1qw7e1gqoJAHianHZfNqzz8qrjZPTiB-QHHMkaHvHxXmzG5sVIiYMBjdsJC9f-6ikrRRLlZsg7HnMgZRyU199Ts6-qqy35f57IjN2DhgNzBYvS3glUkhkjwg2UMbn2U9V4wnzy0)
-
-### Component diagram
