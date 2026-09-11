@@ -1,0 +1,31 @@
+@startuml
+
+start
+:pull first id;
+
+repeat
+:get data from DonorDock API;
+
+if (has address, is individual, and not DoNotSolicit?) then (yes)
+  :send address to Smarty;
+  if (exactly one match, and is deliverable) then (yes)
+    :update address to match;
+  else (no)
+    :set BadAddress to True;
+  endif
+endif
+
+:attempt to correct phone numbers;
+if (valid?) then (valid)
+  :correct phone number to standardized format;
+else (not valid)
+  :set relevant flag BadMainNumber or BadMobileNumber to True;
+endif
+
+:write original to before.csv and updated to after.csv;
+:pull next id;
+repeat while (next id?) is (exists) not (empty)
+
+stop
+
+@enduml

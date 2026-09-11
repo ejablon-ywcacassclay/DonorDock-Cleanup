@@ -1,6 +1,4 @@
 import requests
-from oauthlib.oauth2 import BackendApplicationClient
-from requests_oauthlib import OAuth2Session
 import phonenumbers
 import os
 import re
@@ -213,7 +211,7 @@ def try_fix_contact(contact_dict: dict):
 # ----------------------------------------------------------------
 
 BATCH_SIZE = 1000 # Number of contacts retrieved per DonorDock query
-SMARTY_REQUEST_BREAKPOINT = 50 # Max number of Smarty requests. Records stop being processed after this number of requests have been made.
+SMARTY_REQUEST_BREAKPOINT = 100 # Max number of Smarty requests. Records stop being processed after this number of requests have been made.
 
 csv_schema = ['Id', 'AccountNumber', 'MemberId', 'Title',
         'FirstName', 'MiddleName', 'LastName', 'FullName', 'DisplayName', 'Nickname', 'FormerName',
