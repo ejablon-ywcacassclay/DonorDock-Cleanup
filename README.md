@@ -2,19 +2,29 @@
 
 The purpose of this project is to clean up and standardize the DonorDock contact data so that it can be maintained and de-duplicated more easily.
 
+## Table of Contents
+
+- #how-to-use
+  - #to-run-the-script
+  - #finding-your-donordock-tenant-id
+  - #to-analyze-results
+- #overview-of-design
+  - #data-flow
+  - #flags-for-bad-data
+  - #main-resourcesdependencies-used
+- #design-decisions-and-changes
+- #files
+- #challenges-and-things-learned
+- #diagrams
+
 ## How to use
 
 ### To run the script
 
 Running the script requires:
+- Creating a virtual environment (venv)
 - Installing all required packages via pip
-- Getting and loading in all required API keys and secrets, plus the DonorDock Tenant ID\*, into the right environment variables
-
-\*The DonorDock Tenant ID is hard to find. You can email DonorDock Support to ask for it, but the easier way that doesn't require any waiting is:
-- Go to Settings Menu (top right) -> Integrations -> POINT, then click Create POINT Key
-- Copy the Tenant ID from the POINT key
-- Click Revoke Point Key
-The Tenant ID is the identifier for your organization, so it doesn't matter where you get it from, it will always be the same.
+- Creating and loading in all required API keys and secrets, plus the DonorDock Tenant ID (see: [Finding your tenant ID](#finding-your-tenant-id)), into the right environment variables
 
 You will also need to have a few files for the script to pull from.
 
@@ -25,6 +35,14 @@ If you are cleaning from a list of IDs, you need:
 If you are cleaning as a scheduled task, you need:
 - start_date.txt -- can start as an empty file. Records the date of the last record that was checked.
 Note that even when importing records in bulk, their creation dates are still separated by several milliseconds, allowing us to increment the date of the last record checked by 1 ms to get the next record without repeats.
+
+### Finding your tenant ID
+The DonorDock Tenant ID is hard to find. You can email DonorDock Support to ask for it, but the easier way that doesn't require waiting for a response is:
+- Go to Settings Menu (top right) -> Integrations -> POINT, then click Create POINT Key
+- Copy the Tenant ID from the POINT key
+- Click Revoke Point Key
+
+The Tenant ID is the identifier for your organization, so it doesn't matter where you get it from, it will always be the same.
 
 ### To analyze results
 
@@ -52,6 +70,7 @@ plus
 It should be fine to remove all other fields if desired, except for *Id* which may be necessary for importing the validated data back into DonorDock.
 
 \*BadMainNumber is not a field that DonorDock uses; it is added here to provide more detailed flagging, so the human reviewing the output can tell more easily which phone number was flagged.
+
 \*\*A note about County: DonorDock mysteriously does not provide the County field via their API, despite it being present in their data and their manual exporting. Furthermore, County is autocompleted by their current Smarty integration when manually entering an address. Thus, County must be included in the corrected (i.e. *after*) data, but it can't be retrieved for the initial (i.e. *before*) data, so it will show as blank for any field that is not being corrected by the Smarty API. This is not a concern, however, because blank fields did not overwrite filled ones upon DonorDock import based on my testing.
 
 ## Overview of design
@@ -68,7 +87,9 @@ If the Main Phone or Mobile Phone are not valid, the flags BadMainNumber or BadM
 For Address:
 If the address is not determined to be *deliverable*, the BadAddress flag will be set to True.
 
-These fields are used because they already exist in the database. Because they already exist and have a purpose, they will not be modified unless the phone number or address is specifically determined to be invalid, thus they won't be set to False even if the phone numbers or the address seem to be valid.
+BadMobileNumber and BadAddress already exist in the database. Because they already exist and have a purpose, they will not be modified unless the phone number or address is specifically determined to be invalid, thus they won't be set to False even if the phone numbers or the address seem to be valid.
+
+As mentioned in [To analyze results](#to-analyze-results): BadMainNumber is not a field that DonorDock uses; it is added here to provide more detailed flagging, so the human reviewing the output can tell more easily which phone number was flagged.
 
 ### Main resources/dependencies used
 
@@ -91,8 +112,23 @@ Then, the USPS API was abandoned in favor of Smarty. There were a few reasons fo
 
 ### clean_dd.py
 Hosts most of the useful functions for processing a contact. Also contains a main method that processes contacts by creation date.
+Its main method is intended to be used as a scheduled process of any records that have been added more recently than the last record checked, running until it hits the last record **or** until hitting API rate limits.
 
-### 
+### test_clean_dd.py
+Test suite for most of the functions in *clean_dd.py*.
+
+### clean_from_list_of_ids.py
+Script for the alternative solution of processing from a list of IDs rather than a scheduled run of the most recent additions.
+Depends on functions from *clean_dd.py*, on *list_of_ids.txt* having a list of IDs, and on *id_of_last_checked.txt* existing.
+
+### list_of_ids.txt
+Expected to be one ID per line and nothing else. Used by *clean_from_list_of_ids.py*.
+
+### id_of_last_checked.txt
+Can be created as an empty file. Allows program to continue where it left off if it hits the max Smarty requests and stops. Used by *clean_from_list_of_ids.py*.
+
+### start_date.txt
+Can start as an empty file. Records the date of the last record that was checked. Used by *clean_dd.py*.
 
 ## Challenges and things learned
 
